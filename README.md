@@ -1,4 +1,4 @@
-# Gemini Chat Application
+# CMPE 280: Gemini Chat Application
 
 A web application that integrates Google's Gemini 1.5 Flash LLM with a Flask-based web UI.
 
