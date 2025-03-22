@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Chat App</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .logo {
+        max-width: 100px;
+      }
+      .chat-container {
+        margin-top: 20px;
+      }
+      .message {
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+      }
+      .user {
+        background-color: #e3f2fd;
+      }
+      .ai {
+        background-color: #e8f5e9;
+      }
+      .system {
+        background-color: #f1f3f4;
+      }
+      textarea {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 10px;
+      }
+      button {
+        padding: 10px 15px;
+        margin-right: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Gemini Chat</h1>
+    <p>Welcome to Gemini Chat! Ask me anything.</p>
+
+    <div id="chat-messages" class="chat-container">
+      <div class="message system">
+        <p>Welcome to Gemini Chat! Ask me anything.</p>
+      </div>
+    </div>
+
+    <form id="chat-form">
+      <textarea
+        id="prompt-input"
+        placeholder="Enter your prompt here..."
+        rows="3"
+      ></textarea>
+      <div>
+        <button type="submit" id="send-btn">Send</button>
+        <button type="button" id="cancel-btn">Cancel</button>
+      </div>
+    </form>
+
+    <p>Powered by Gemini 1.5 Flash</p>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const chatForm = document.getElementById("chat-form");
+        const promptInput = document.getElementById("prompt-input");
+        const chatMessages = document.getElementById("chat-messages");
+        const cancelBtn = document.getElementById("cancel-btn");
+
+        // Function to add a message to the chat
+        function addMessage(content, type) {
+          const messageDiv = document.createElement("div");
+          messageDiv.className = `message ${type}`;
+
+          const messageContent = document.createElement("p");
+          messageContent.textContent = content;
+
+          messageDiv.appendChild(messageContent);
+          chatMessages.appendChild(messageDiv);
+          return messageDiv;
+        }
+
+        // Function to make API request with retries
+        async function makeApiRequest(url, options, retries = 3) {
+          let lastError;
+
+          for (let i = 0; i < retries; i++) {
+            try {
+              console.log(`Attempt ${i + 1} to fetch from ${url}`);
+              const response = await fetch(url, options);
+
+              // If response isn't ok, throw error
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error ${response.status}: ${errorText}`);
+              }
+
+              return await response.json();
+            } catch (error) {
+              console.error(`Attempt ${i + 1} failed:`, error);
+              lastError = error;
+
+              // Wait a bit before retrying (exponential backoff)
+              if (i < retries - 1) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, 1000 * (i + 1))
+                );
+              }
+            }
+          }
+
+          throw lastError;
+        }
+
+        // Handle form submission
+        chatForm.addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const userPrompt = promptInput.value.trim();
+          if (!userPrompt) return;
+
+          // Add user message to chat
+          addMessage(userPrompt, "user");
+
+          // Clear input
+          promptInput.value = "";
+
+          // Add loading message
+          const loadingMessage = addMessage("Loading...", "system");
+
+          try {
+            // Try both URLs - first the relative one, then absolute if that fails
+            let data;
+            try {
+              // First try the relative URL (if accessing via Flask directly)
+              data = await makeApiRequest("/chat", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ prompt: userPrompt }),
+              });
+            } catch (relativeError) {
+              console.log("Relative URL failed, trying absolute URL");
+              // If that fails, try the absolute URL (if accessing via Live Server)
+              data = await makeApiRequest("http://127.0.0.1:5000/chat", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ prompt: userPrompt }),
+              });
+            }
+
+            // Remove loading message
+            if (loadingMessage) {
+              loadingMessage.remove();
+            }
+
+            // Add AI response to chat
+            addMessage(data.response, "ai");
+          } catch (error) {
+            // Remove loading message
+            if (loadingMessage) {
+              loadingMessage.remove();
+            }
+
+            // Add detailed error message to chat
+            const errorMsg = `Error: ${
+              error.message ||
+              "Failed to connect to server. Make sure Flask is running at http://127.0.0.1:5000"
+            }`;
+            addMessage(errorMsg, "system");
+            console.error("Error details:", error);
+          }
+        });
+
+        // Handle cancel button
+        cancelBtn.addEventListener("click", function () {
+          promptInput.value = "";
+          promptInput.focus();
+        });
+
+        // Focus on input when page loads
+        promptInput.focus();
+      });
+    </script>
+  </body>
+</html>
